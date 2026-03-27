@@ -1,0 +1,30 @@
+name: Weekly Screenshot
+
+on:
+  schedule:
+    # 毎週水曜日の12:00(JST) = 03:00(UTC) に実行
+    # cronの書式: 分 時 日 月 曜日 (0=日, 3=水)
+    - cron: '0 3 * * 3'
+  workflow_dispatch: # これを入れておくと、手動実行ボタンが表示されます
+
+jobs:
+  take-screenshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run screenshot script
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: node index.js
