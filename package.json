@@ -1,0 +1,9 @@
+{
+  "name": "screenshot-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "googleapis": "^128.0.0",
+    "puppeteer": "^21.0.0"
+  }
+}
