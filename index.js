@@ -6,9 +6,16 @@ async function run() {
   const url = 'https://www.3ple.jp/feature/3ple/ichioshi52w/';
   const folderId = process.env.DRIVE_FOLDER_ID;
   const credentialsJson = JSON.parse(process.env.GCP_SA_KEY);
-
+  
   console.log('ブラウザを起動しています...');
-  const browser = await puppeteer.launch();
+  // オプションを追加して起動
+  const browser = await puppeteer.launch({
+    headless: 'new', // 警告を消すための新しいモード指定
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox'
+    ] // GitHub Actions環境で起動させるための必須設定
+  });
   const page = await browser.newPage();
   
   // スマホ(iPhone 13)の表示をエミュレート
