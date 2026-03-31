@@ -13,7 +13,7 @@ async function run() {
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-features=IsolateOrigins,site-per-process' // iframeの別プロセス化を防ぐ
+      '--disable-features=IsolateOrigins,site-per-process'
     ]
   });
   const page = await browser.newPage();
@@ -23,11 +23,9 @@ async function run() {
   await page.emulate(iPhone);
 
   console.log('ページにアクセスしています...');
-  // タイムアウトを60秒に設定し、DOMの読み込み完了を待機
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   
   console.log('全画像を読み込ませるため、一番下まで自動スクロールします...');
-  // ページ内を自動でスクロールする処理（Lazy Load対策）
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let totalHeight = 0;
@@ -37,73 +35,67 @@ async function run() {
         window.scrollBy(0, distance);
         totalHeight += distance;
 
-        // ページの一番下に到達したら終了
+        // ページの一番下に到達したら終了（ここではまだ上に戻さない）
         if (totalHeight >= scrollHeight - window.innerHeight) {
           clearInterval(timer);
-          window.scrollTo(0, 0); // スクショ前に一番上に戻す
           resolve();
         }
-      }, 150); // 0.15秒ごとにスクロール
+      }, 150); 
     });
   });
 
-  console.log('不要なポップアップの削除と、YouTubeの画像置換を行っています...');
-  // 画面内の特定の要素を操作する処理
+  console.log('不要なポップアップを削除しています...');
   await page.evaluate(() => {
-    // 1. 指定された追従バナーを削除
     const banners = document.querySelectorAll('.fixation-bnr');
     banners.forEach(el => el.remove());
-
-    // 2. YouTubeのiframeをサムネイル画像に強制置換（白抜き対策）
-    const iframes = document.querySelectorAll('iframe[src*="youtube.com/embed/"]');
-    iframes.forEach(iframe => {
-      const src = iframe.src;
-      // URLから動画IDを抽出 (例: .../embed/YS7LsILZ9qA?rel=0 -> YS7LsILZ9qA)
-      const videoIdMatch = src.match(/embed\/([a-zA-Z0-9_-]+)/);
-      
-      if (videoIdMatch && videoIdMatch[1]) {
-        const videoId = videoIdMatch[1];
-        // YouTube公式の高画質サムネイル画像URL
-        const thumbUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        
-        // iframeと同じサイズの画像要素(img)を新しく作成
-        const img = document.createElement('img');
-        img.src = thumbUrl;
-        
-        // 元のiframeのスタイルに合わせて表示を整える
-        img.style.width = '100%';
-        img.style.height = 'auto';
-        img.style.aspectRatio = '16 / 9'; // YouTubeの標準比率
-        img.style.objectFit = 'cover';
-        
-        // HTML上で iframe を 作成した img にすり替える
-        iframe.parentNode.replaceChild(img, iframe);
-      }
-    });
   });
 
-  console.log('最終的な描画が落ち着くまで5秒待機します...');
-  // サムネイル画像の読み込みや描画が終わるのを確実に待つ
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  console.log('YouTube枠をそのままの見た目で画像化しています...');
+  // ページ上のYouTubeのiframe要素をすべて取得
+  const iframes = await page.$$('iframe[src*="youtube.com/embed/"]');
+  for (const iframe of iframes) {
+    try {
+      // 該当のYouTube動画が画面内に見える位置までスクロール
+      await iframe.scrollIntoView();
+      // プレイヤーのUI（タイトルやボタン等）が描画されるのを2秒待機
+      await new Promise(r => setTimeout(r, 2000));
+      
+      // ★iframe部分だけをスクリーンショット撮影し、Base64の画像データにする
+      const base64Img = await iframe.screenshot({ encoding: 'base64' });
+      
+      // 撮影した画像を、HTML上の元のiframe要素とすり替える
+      await page.evaluate((frameEl, base64) => {
+        const img = document.createElement('img');
+        img.src = 'data:image/png;base64,' + base64;
+        img.style.width = '100%';
+        img.style.height = 'auto';
+        img.style.display = 'block'; // 不要な余白を防止
+        frameEl.parentNode.replaceChild(img, frameEl);
+      }, iframe, base64Img);
+    } catch (err) {
+      console.log('YouTube置換エラー（スキップします）:', err.message);
+    }
+  }
 
-  console.log('スクリーンショットを取得中...');
-  // fullPage: true でページ全体を撮影
+  console.log('一番上に戻り、最終的な描画を待機します...');
+  // スクリーンショット撮影前にページの一番上に戻す
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  console.log('全体のスクリーンショットを取得中...');
   const screenshotBuffer = await page.screenshot({ fullPage: true });
   await browser.close();
 
   console.log('Google Drive(共有ドライブ)へアップロードしています...');
-  // Google Drive APIの認証設定
   const auth = new google.auth.GoogleAuth({
     credentials: credentialsJson,
     scopes: ['https://www.googleapis.com/auth/drive.file'],
   });
   const drive = google.drive({ version: 'v3', auth });
   
-  // バッファをストリームに変換
   const bufferStream = new stream.PassThrough();
   bufferStream.end(screenshotBuffer);
 
-  // ファイル名（例: screenshot_2024-03-31.png）
   const dateStr = new Date().toISOString().split('T')[0];
   const fileName = `screenshot_${dateStr}.png`;
 
@@ -111,13 +103,13 @@ async function run() {
     const res = await drive.files.create({
       requestBody: {
         name: fileName,
-        parents: [folderId], // 指定したフォルダに保存
+        parents: [folderId],
       },
       media: {
         mimeType: 'image/png',
         body: bufferStream,
       },
-      supportsAllDrives: true, // ★共有ドライブへの保存に必須
+      supportsAllDrives: true,
     });
     console.log(`アップロード完了！ File ID: ${res.data.id}`);
   } catch (err) {
