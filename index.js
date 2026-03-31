@@ -18,51 +18,46 @@ async function run() {
   await page.emulate(iPhone);
 
   console.log('ページにアクセスしています...');
-  // 60秒の余裕を持たせてアクセス
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   
   console.log('全画像を読み込ませるため、一番下まで自動スクロールします...');
-  // ページ内を自動でスクロールする処理
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let totalHeight = 0;
-      const distance = 300; // 1回にスクロールするピクセル数
+      const distance = 400; // 少し広めにスクロール
       const timer = setInterval(() => {
         const scrollHeight = document.body.scrollHeight;
         window.scrollBy(0, distance);
         totalHeight += distance;
 
-        // ページの一番下に到達したら終了
         if (totalHeight >= scrollHeight - window.innerHeight) {
           clearInterval(timer);
-          window.scrollTo(0, 0); // スクショ前に一番上に戻す
           resolve();
         }
-      }, 150); // 0.15秒ごとにスクロール
+      }, 200); // YouTubeが反応しやすいように少しゆっくり(0.2秒)スクロール
     });
   });
 
-  console.log('不要なポップアップやバナーを削除しています...');
-  // 画面内の特定の要素を削除する処理
+  console.log('YouTubeなどの外部通信が完全に終わるまで待機しています...');
+  try {
+    // ネットワークの通信が「2秒間」完全に静かになるまで待つ（最大15秒）
+    await page.waitForNetworkIdle({ idleTime: 2000, timeout: 15000 });
+  } catch (e) {
+    console.log('一部の通信が継続中ですが、タイムアウトしたため次へ進みます。');
+  }
+
+  console.log('不要なポップアップやバナーを削除し、上部に戻ります...');
   await page.evaluate(() => {
-    // 1. 指定いただいたバナーを削除
+    // 通信完了後に一番上へ戻す
+    window.scrollTo(0, 0);
+
+    // バナーの削除
     const banners = document.querySelectorAll('.fixation-bnr');
     banners.forEach(el => el.remove());
-
-    // 2. もし他に「白っぽいフタ」の原因となるローディング要素があれば削除
-    // ※今回は全要素に対して、z-indexが異常に高い(ポップアップ系)ものを非表示にする保険をかけます
-    const allElements = document.querySelectorAll('*');
-    allElements.forEach(el => {
-      const style = window.getComputedStyle(el);
-      if (style.position === 'fixed' || style.zIndex > 100) {
-        // el.remove(); // やりすぎると必要なものも消えるので、まずはバナー指定削除のみで様子見
-      }
-    });
   });
 
-  console.log('最終的な描画が落ち着くまで5秒待機します...');
-  // 読み込みやアニメーションが終わるのを確実に待つ
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  console.log('最終的な描画が落ち着くまで3秒待機します...');
+  await new Promise(resolve => setTimeout(resolve, 3000));
 
   console.log('スクリーンショットを取得中...');
   const screenshotBuffer = await page.screenshot({ fullPage: true });
