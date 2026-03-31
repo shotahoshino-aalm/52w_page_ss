@@ -10,7 +10,11 @@ async function run() {
   console.log('ブラウザを起動しています...');
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-features=IsolateOrigins,site-per-process' // ★この1行を追加！
+    ]
   });
   const page = await browser.newPage();
   
