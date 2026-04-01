@@ -4,7 +4,7 @@ on:
   schedule:
     # 毎週水曜日の12:00(JST) = 03:00(UTC) に実行
     # cronの書式: 分 時 日 月 曜日 (0=日, 3=水)
-    - cron: '0 3 * * 3'
+    - cron: '15 6 * * 3'
   workflow_dispatch: # これを入れておくと、手動実行ボタンが表示されます
 
 jobs:
