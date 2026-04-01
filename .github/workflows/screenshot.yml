@@ -2,8 +2,8 @@ name: Weekly Screenshot
 
 on:
   schedule:
-    # JSTの15:40 = UTCの06:40
-    - cron: '40 6 * * *'  # ★曜日指定の「3」を「*」にして毎日実行にする
+    # 5分ごとに実行（テスト用の最強設定）
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
