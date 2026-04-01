@@ -1,7 +1,5 @@
 name: Weekly Screenshot
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 jobs:
   take-screenshot:
