@@ -13,29 +13,39 @@ async function run() {
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-features=IsolateOrigins,site-per-process'
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-application-cache' // ★追加：ブラウザのアプリケーションキャッシュを無効化
     ]
   });
   const page = await browser.newPage();
+
+  // ★追加：ページレベルでのキャッシュを完全に無効化
+  await page.setCacheEnabled(false);
+
+  // ★追加：サーバー（CDNやYouTube）側に「キャッシュを寄越さないで」と強制するヘッダー
+  await page.setExtraHTTPHeaders({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
   
   // スマホ(iPhone 13)の表示をエミュレート
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
-  console.log('ページにアクセスしています...');
+  console.log('ページにアクセスしています（キャッシュ無効）...');
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   
   console.log('全画像を読み込ませるため、一番下まで自動スクロールします...');
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let totalHeight = 0;
-      const distance = 300; // 1回にスクロールするピクセル数
+      const distance = 300;
       const timer = setInterval(() => {
         const scrollHeight = document.body.scrollHeight;
         window.scrollBy(0, distance);
         totalHeight += distance;
 
-        // ページの一番下に到達したら終了（ここではまだ上に戻さない）
         if (totalHeight >= scrollHeight - window.innerHeight) {
           clearInterval(timer);
           resolve();
@@ -51,25 +61,20 @@ async function run() {
   });
 
   console.log('YouTube枠をそのままの見た目で画像化しています...');
-  // ページ上のYouTubeのiframe要素をすべて取得
   const iframes = await page.$$('iframe[src*="youtube.com/embed/"]');
   for (const iframe of iframes) {
     try {
-      // 該当のYouTube動画が画面内に見える位置までスクロール
       await iframe.scrollIntoView();
-      // プレイヤーのUI（タイトルやボタン等）が描画されるのを2秒待機
       await new Promise(r => setTimeout(r, 2000));
       
-      // ★iframe部分だけをスクリーンショット撮影し、Base64の画像データにする
       const base64Img = await iframe.screenshot({ encoding: 'base64' });
       
-      // 撮影した画像を、HTML上の元のiframe要素とすり替える
       await page.evaluate((frameEl, base64) => {
         const img = document.createElement('img');
         img.src = 'data:image/png;base64,' + base64;
         img.style.width = '100%';
         img.style.height = 'auto';
-        img.style.display = 'block'; // 不要な余白を防止
+        img.style.display = 'block';
         frameEl.parentNode.replaceChild(img, frameEl);
       }, iframe, base64Img);
     } catch (err) {
@@ -78,7 +83,6 @@ async function run() {
   }
 
   console.log('一番上に戻り、最終的な描画を待機します...');
-  // スクリーンショット撮影前にページの一番上に戻す
   await page.evaluate(() => window.scrollTo(0, 0));
   await new Promise(resolve => setTimeout(resolve, 3000));
 
