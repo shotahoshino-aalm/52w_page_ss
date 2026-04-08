@@ -61,11 +61,29 @@ async function run() {
   });
 
   console.log('YouTube枠をそのままの見た目で画像化しています...');
+  // ページ上のYouTubeのiframe要素をすべて取得（隠れている古いものも含まれる）
   const iframes = await page.$$('iframe[src*="youtube.com/embed/"]');
+  
   for (const iframe of iframes) {
     try {
+      // ★【追加】このiframeが現在「表示」されているか（今週のCMか）を判定
+      const isVisible = await page.evaluate((el) => {
+        // 幅や高さが0、または display: none 等で隠されているかチェック
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      }, iframe);
+
+      // ★【追加】もし非表示（過去や未来のCM）なら、画面から完全に削除してスキップ
+      if (!isVisible) {
+        await page.evaluate(el => el.remove(), iframe);
+        console.log('非表示の古いYouTube枠を削除しました');
+        continue; // 次の要素へ
+      }
+
+      // 以下、表示されている（今週の）YouTube枠だけを画像化する処理
       await iframe.scrollIntoView();
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 2000)); // 読み込み待機
       
       const base64Img = await iframe.screenshot({ encoding: 'base64' });
       
@@ -74,9 +92,10 @@ async function run() {
         img.src = 'data:image/png;base64,' + base64;
         img.style.width = '100%';
         img.style.height = 'auto';
-        img.style.display = 'block';
+        img.style.display = 'block'; 
         frameEl.parentNode.replaceChild(img, frameEl);
       }, iframe, base64Img);
+
     } catch (err) {
       console.log('YouTube置換エラー（スキップします）:', err.message);
     }
