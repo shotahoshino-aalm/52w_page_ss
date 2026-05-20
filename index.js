@@ -48,7 +48,7 @@ async function run() {
     console.warn('※ページ遷移時エラー:', err.message);
   }
 
-  console.log('API通信を誘発させるため、一番下までゆっくりスクロールします...');
+console.log('API通信を誘発させるため、一番下までゆっくりスクロールします...');
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let totalHeight = 0;
@@ -56,6 +56,13 @@ async function run() {
       const timer = setInterval(() => {
         window.scrollBy(0, distance);
         totalHeight += distance;
+
+        // ★追加：人間がスクロール・スワイプしたとJSに錯覚させるための強制イベント発火
+        window.dispatchEvent(new Event('scroll', { bubbles: true }));
+        document.dispatchEvent(new Event('scroll', { bubbles: true }));
+        window.dispatchEvent(new Event('resize', { bubbles: true }));
+        document.dispatchEvent(new Event('touchmove', { bubbles: true }));
+
         if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
           clearInterval(timer);
           resolve();
