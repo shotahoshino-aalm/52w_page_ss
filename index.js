@@ -9,7 +9,7 @@ async function run() {
 
   console.log('ブラウザを起動しています...');
   const browser = await puppeteer.launch({
-    headless: 'new',
+    headless: true, // 最新版Puppeteerの標準指定
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox', 
@@ -18,7 +18,15 @@ async function run() {
   });
   
   const page = await browser.newPage();
-  
+
+  // ★★★【追加】ブラウザ内部のエラーをGitHub Actionsのログに筒抜けにする監視カメラ ★★★
+  page.on('console', msg => console.log('[サイト内ログ]:', msg.text()));
+  page.on('pageerror', error => console.error('[サイト内JSエラー]:', error.message));
+  page.on('requestfailed', request => {
+    console.error(`[通信ブロック/失敗]: ${request.url()} - ${request.failure()?.errorText}`);
+  });
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
   // Bot回避
   await page.evaluateOnNewDocument(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -29,7 +37,7 @@ async function run() {
   await page.emulateTimezone('Asia/Tokyo');
   await page.setCacheEnabled(false);
 
-  // スマホ環境の再現
+  // スマホ環境の再現（iPhone 13）
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
@@ -37,7 +45,7 @@ async function run() {
   try {
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   } catch (err) {
-    console.warn('※ページ遷移時にエラーが発生しましたが、処理を継続します:', err.message);
+    console.warn('※ページ遷移時エラー:', err.message);
   }
 
   console.log('API通信を誘発させるため、一番下までゆっくりスクロールします...');
@@ -56,12 +64,10 @@ async function run() {
     });
   });
 
-  console.log('【重要】画面に表示されているAPIデータ（タグ）の到着を待機します...');
+  console.log('画面に表示されているAPIデータ（タグ）の到着を待機します...');
   await page.evaluate(async () => {
-    // スクショの邪魔になる固定バナーだけ削除（サイトの骨組みには触れない）
     document.querySelectorAll('.fixation-bnr').forEach(el => el.remove());
 
-    // 表示されているタグコンテナにデータが入るのを待つ
     await new Promise((resolve) => {
       let attempts = 0;
       const timer = setInterval(() => {
@@ -72,17 +78,14 @@ async function run() {
         let visibleCount = 0;
 
         tags.forEach(tag => {
-          // ★ offsetParent !== null は「画面に表示されている（隠されていない）」という意味
           if (tag.offsetParent !== null) {
             visibleCount++;
-            // 文字数が少ない場合は、まだAPIからデータが届いていないと判定
             if (tag.innerHTML.trim().length < 50) {
               allVisibleLoaded = false;
             }
           }
         });
 
-        // 「表示されているタグ」がすべて読み込まれたか、20秒経過で完了
         if ((visibleCount > 0 && allVisibleLoaded) || attempts >= 40) {
           clearInterval(timer);
           resolve();
@@ -95,16 +98,11 @@ async function run() {
   const iframes = await page.$$('iframe[src*="youtube.com/embed/"]');
   for (const iframe of iframes) {
     try {
-      // ★ここでも「画面に表示されているYouTubeか？」を確認する
       const isVisible = await iframe.evaluate(el => el.offsetParent !== null);
-      
       if (!isVisible) {
-        // 見えない（過去や未来の期間外）動画は撮影せずにスキップ
         await iframe.evaluate(el => el.remove());
         continue;
       }
-
-      // 見えている（今週の）動画だけを画像化
       await iframe.scrollIntoView();
       await new Promise(r => setTimeout(r, 2000));
       
