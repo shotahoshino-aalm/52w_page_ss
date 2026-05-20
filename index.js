@@ -13,7 +13,7 @@ async function run() {
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox', 
-      '--disable-features=IsolateOrigins,site-per-process'
+      '--disable-features=IsolateOrigins,site-per-process' 
     ]
   });
   
@@ -27,33 +27,47 @@ async function run() {
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
-console.log('ページにアクセスしています...');
+  console.log('ページにアクセスしています...');
   try {
-    // ★対策1: networkidle2によるタイムアウトを防ぎ、CSSが確実に読み込まれる 'load' を使用
+    // CSS等が確実に読み込まれる 'load' を使用
     await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   } catch (err) {
     console.warn('※ページ遷移時にエラーが発生しましたが、処理を継続します:', err.message);
   }
 
-  console.log('ABテストや動的コンテンツの初期反映を10秒待機しています...');
-  await new Promise(r => setTimeout(r, 10000));
+  console.log('初期JSの反映を5秒待機しています...');
+  await new Promise(r => setTimeout(r, 5000));
   
-  console.log('一番下までゆっくり自動スクロールします（Lazy Load対策）...');
+  console.log('JSコンテンツの生成を待つため、監視型スクロールを実行します...');
   try {
     await page.evaluate(async () => {
       await new Promise((resolve) => {
         let totalHeight = 0;
         const distance = 400; // 1回のスクロール量
+        let lastScrollHeight = document.body.scrollHeight;
+        let unchangedCount = 0;
         
-        // ★対策2: インターバルを150msから400msに変更し、lazy-loadの生成時間に余裕を持たせる
         const timer = setInterval(() => {
-          const scrollHeight = document.body.scrollHeight;
           window.scrollBy(0, distance);
           totalHeight += distance;
           
-          if (totalHeight >= scrollHeight - window.innerHeight) {
-            clearInterval(timer);
-            resolve();
+          const currentScrollHeight = document.body.scrollHeight;
+          
+          // 一番下（付近）まで到達したかチェック
+          if (totalHeight >= currentScrollHeight - window.innerHeight) {
+            // ★JSによるコンテンツ追加で「ページの高さ」が変わったか監視
+            if (currentScrollHeight === lastScrollHeight) {
+              unchangedCount++;
+              // 約4秒間（400ms × 10回）新しいタグの追加がなければ、全読み込み完了とみなす
+              if (unchangedCount >= 10) {
+                clearInterval(timer);
+                resolve();
+              }
+            } else {
+              // 高さが伸びた（JSでタグ等が追加された）場合はカウントをリセットしてスクロール継続
+              lastScrollHeight = currentScrollHeight;
+              unchangedCount = 0;
+            }
           }
         }, 400); 
       });
@@ -61,6 +75,10 @@ console.log('ページにアクセスしています...');
   } catch (err) {
     console.warn('※スクロール中にページ構造が変化しましたが、継続します:', err.message);
   }
+
+  // ★追加：生成されたJSコンテンツの中身（画像やテキスト）が完全に描画されるのを待つ
+  console.log('タグコンテンツが完全に描画されるまでさらに10秒待機します...');
+  await new Promise(r => setTimeout(r, 10000));
 
   console.log('不要な要素の削除と、表示期間外のコンテンツをパージしています...');
   await page.evaluate(() => {
@@ -98,10 +116,9 @@ console.log('ページにアクセスしています...');
     }
   }
 
-  // ★変更：描画完了までの待機時間を大幅に延長（3秒 → 15秒）
-  console.log('一番上に戻り、最終的なレイアウトと画像描画の安定を15秒待機します...');
+  console.log('一番上に戻り、最終的なレイアウト安定を5秒待機します...');
   await page.evaluate(() => window.scrollTo(0, 0));
-  await new Promise(resolve => setTimeout(resolve, 15000));
+  await new Promise(resolve => setTimeout(resolve, 5000));
 
   console.log('全体のスクリーンショットを取得中...');
   const screenshotBuffer = await page.screenshot({ fullPage: true });
@@ -124,7 +141,7 @@ console.log('ページにアクセスしています...');
     const res = await drive.files.create({
       requestBody: {
         name: fileName,
-        parents: [folderId],
+        parents: [folderId], 
       },
       media: {
         mimeType: 'image/png',
