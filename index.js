@@ -18,6 +18,17 @@ async function run() {
   });
   
   const page = await browser.newPage();
+
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    Object.defineProperty(navigator, 'languages', { get: () => ['ja', 'en-US', 'en'] });
+    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+  });
+
+  // 通信ヘッダーも自然な日本語環境に偽装
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8'
+  });
   
   // サーバーの時差ボケを直し、日本時間（JST）を強制的にエミュレートする
   await page.emulateTimezone('Asia/Tokyo');
