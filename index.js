@@ -42,12 +42,25 @@ async function run() {
   console.log('初期JSの実行を待機しています...');
   await new Promise(r => setTimeout(r, 5000));
 
-  console.log('不要なブロックの削除と、APIデータ(タグ)の到着を待機しています...');
+console.log('不要なブロックの削除と、APIデータ(タグ)の到着を待機しています...');
   await page.evaluate(async () => {
     // 1. スクショの邪魔になる固定バナーを削除
     document.querySelectorAll('.fixation-bnr').forEach(el => el.remove());
 
-    // 2. 期間外のブロックをHTMLごと完全に削除（これで不要なタグ通信を待たずに済む）
+    // ★追加対策1: サイト側の処理（is-withinの付与）が確実に終わるのを待つ
+    await new Promise(resolve => {
+      let checkAttempts = 0;
+      const checkTimer = setInterval(() => {
+        checkAttempts++;
+        // .is-withinを持つ要素が現れるか、5秒経過したら次へ
+        if (document.querySelector('.is-within') || checkAttempts >= 10) {
+          clearInterval(checkTimer);
+          resolve();
+        }
+      }, 500);
+    });
+
+    // 2. 期間外のブロックをHTMLごと完全に削除
     document.querySelectorAll('.js-date-check').forEach(el => {
       if (!el.classList.contains('is-within')) {
         el.remove(); 
@@ -60,7 +73,9 @@ async function run() {
       const timer = setInterval(() => {
         attempts++;
         const tagContainers = document.querySelectorAll('.js-3ple-tag-to-content');
-        let allLoaded = true;
+        
+        // ★追加対策2: コンテナが「0個」の場合は、まだサイトが生成中とみなして待機する
+        let allLoaded = tagContainers.length > 0; 
         
         tagContainers.forEach(container => {
           // 中身の文字数が10文字以下（空っぽか、ローディングタグのみ）ならまだと判定
