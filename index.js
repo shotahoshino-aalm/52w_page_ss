@@ -29,6 +29,7 @@ async function run() {
   await page.emulateTimezone('Asia/Tokyo');
   await page.setCacheEnabled(false);
 
+  // スマホ環境の再現
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
@@ -39,58 +40,14 @@ async function run() {
     console.warn('※ページ遷移時にエラーが発生しましたが、処理を継続します:', err.message);
   }
 
-  console.log('DOMの整理とコンテンツの読み込み（3段階スクロール）を開始します...');
+  console.log('API通信を誘発させるため、一番下までゆっくりスクロールします...');
   await page.evaluate(async () => {
-    // 1. バナー削除
-    document.querySelectorAll('.fixation-bnr').forEach(el => el.remove());
-
-    // 2. is-within（今週の表示）が付与されるのを待つ (最大5秒)
-    for(let i=0; i<10; i++) {
-      if (document.querySelector('.is-within')) break;
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // 3. 期間外のブロックを削除
-    document.querySelectorAll('.js-date-check').forEach(el => {
-      if (!el.classList.contains('is-within')) el.remove();
-    });
-
-    // 4. 【第1段階】通信を誘発させるための「下見スクロール」
     await new Promise((resolve) => {
       let totalHeight = 0;
+      const distance = 400;
       const timer = setInterval(() => {
-        window.scrollBy(0, 500);
-        totalHeight += 500;
-        if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 300);
-    });
-
-    // 5. 【第2段階】タグの中にデータ(HTML)が入るのを待つ (最大15秒)
-    for(let i=0; i<30; i++) {
-      const tags = document.querySelectorAll('.js-3ple-tag-to-content');
-      let allDone = true;
-      tags.forEach(tag => {
-        // 文字数が少ない、かつ子要素がない場合は未完了とみなす
-        if (tag.innerHTML.trim().length < 50 && tag.children.length === 0) {
-          allDone = false;
-        }
-      });
-      // タグがすべて完了したか、処理によってタグ自体が消滅した場合はループを抜ける
-      if (tags.length === 0 || allDone) break; 
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    // 6. 【第3段階】追加されたコンテンツ内の画像を読み込ませるため、上に戻ってから「仕上げスクロール」
-    window.scrollTo(0, 0);
-    await new Promise(r => setTimeout(r, 1000));
-    await new Promise((resolve) => {
-      let totalHeight = 0;
-      const timer = setInterval(() => {
-        window.scrollBy(0, 400);
-        totalHeight += 400;
+        window.scrollBy(0, distance);
+        totalHeight += distance;
         if (totalHeight >= document.body.scrollHeight - window.innerHeight) {
           clearInterval(timer);
           resolve();
@@ -99,10 +56,55 @@ async function run() {
     });
   });
 
+  console.log('【重要】画面に表示されているAPIデータ（タグ）の到着を待機します...');
+  await page.evaluate(async () => {
+    // スクショの邪魔になる固定バナーだけ削除（サイトの骨組みには触れない）
+    document.querySelectorAll('.fixation-bnr').forEach(el => el.remove());
+
+    // 表示されているタグコンテナにデータが入るのを待つ
+    await new Promise((resolve) => {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts++;
+        const tags = document.querySelectorAll('.js-3ple-tag-to-content');
+        
+        let allVisibleLoaded = true;
+        let visibleCount = 0;
+
+        tags.forEach(tag => {
+          // ★ offsetParent !== null は「画面に表示されている（隠されていない）」という意味
+          if (tag.offsetParent !== null) {
+            visibleCount++;
+            // 文字数が少ない場合は、まだAPIからデータが届いていないと判定
+            if (tag.innerHTML.trim().length < 50) {
+              allVisibleLoaded = false;
+            }
+          }
+        });
+
+        // 「表示されているタグ」がすべて読み込まれたか、20秒経過で完了
+        if ((visibleCount > 0 && allVisibleLoaded) || attempts >= 40) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 500);
+    });
+  });
+
   console.log('最新のYouTube枠を画像化しています...');
   const iframes = await page.$$('iframe[src*="youtube.com/embed/"]');
   for (const iframe of iframes) {
     try {
+      // ★ここでも「画面に表示されているYouTubeか？」を確認する
+      const isVisible = await iframe.evaluate(el => el.offsetParent !== null);
+      
+      if (!isVisible) {
+        // 見えない（過去や未来の期間外）動画は撮影せずにスキップ
+        await iframe.evaluate(el => el.remove());
+        continue;
+      }
+
+      // 見えている（今週の）動画だけを画像化
       await iframe.scrollIntoView();
       await new Promise(r => setTimeout(r, 2000));
       
@@ -120,7 +122,7 @@ async function run() {
     }
   }
 
-  console.log('一番上に戻り、最終的なレイアウト安定を3秒待機します...');
+  console.log('一番上に戻り、最終的なレイアウト安定を待機します...');
   await page.evaluate(() => window.scrollTo(0, 0));
   await new Promise(resolve => setTimeout(resolve, 3000));
 
