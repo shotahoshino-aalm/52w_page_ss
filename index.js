@@ -23,25 +23,33 @@ async function run() {
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
-  console.log('ページにアクセスしています...');
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+console.log('ページにアクセスしています...');
+  // ★対策1: 'domcontentloaded' から 'networkidle2' に変更し、サイトの通信が落ち着くまで待機
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
   
   console.log('一番下まで自動スクロールします（Lazy Load対策）...');
-  await page.evaluate(async () => {
-    await new Promise((resolve) => {
-      let totalHeight = 0;
-      const distance = 300; 
-      const timer = setInterval(() => {
-        const scrollHeight = document.body.scrollHeight;
-        window.scrollBy(0, distance);
-        totalHeight += distance;
-        if (totalHeight >= scrollHeight - window.innerHeight) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 150); 
+  // ★対策2: try...catch で囲み、スクロール中にページが消滅してもプログラムを止めない
+  try {
+    await page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        const distance = 300; 
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+          if (totalHeight >= scrollHeight - window.innerHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 150); 
+      });
     });
-  });
+  } catch (err) {
+    console.warn('※スクロール中にページ遷移または再読み込みが発生しましたが、処理を継続します:', err.message);
+    // 予期せぬ遷移が発生した場合、新しいページの描画を少し待つ
+    await new Promise(r => setTimeout(r, 3000));
+  }
 
   console.log('不要な要素の削除と、表示期間外のコンテンツをパージしています...');
   await page.evaluate(() => {
