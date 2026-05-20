@@ -27,33 +27,35 @@ async function run() {
   const iPhone = puppeteer.KnownDevices['iPhone 13'];
   await page.emulate(iPhone);
 
-  console.log('ページにアクセスしています...');
+console.log('ページにアクセスしています...');
   try {
-    // 通信が落ち着く(networkidle2)まで待機
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    // ★対策1: networkidle2によるタイムアウトを防ぎ、CSSが確実に読み込まれる 'load' を使用
+    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   } catch (err) {
     console.warn('※ページ遷移時にエラーが発生しましたが、処理を継続します:', err.message);
   }
 
-  // ★追加：ABテストや裏側のJS処理が反映されるのをたっぷり待つ
-  console.log('ABテストや動的コンテンツの反映を10秒待機しています...');
+  console.log('ABテストや動的コンテンツの初期反映を10秒待機しています...');
   await new Promise(r => setTimeout(r, 10000));
   
-  console.log('一番下まで自動スクロールします（Lazy Load対策）...');
+  console.log('一番下までゆっくり自動スクロールします（Lazy Load対策）...');
   try {
     await page.evaluate(async () => {
       await new Promise((resolve) => {
         let totalHeight = 0;
-        const distance = 300; 
+        const distance = 400; // 1回のスクロール量
+        
+        // ★対策2: インターバルを150msから400msに変更し、lazy-loadの生成時間に余裕を持たせる
         const timer = setInterval(() => {
           const scrollHeight = document.body.scrollHeight;
           window.scrollBy(0, distance);
           totalHeight += distance;
+          
           if (totalHeight >= scrollHeight - window.innerHeight) {
             clearInterval(timer);
             resolve();
           }
-        }, 150); 
+        }, 400); 
       });
     });
   } catch (err) {
