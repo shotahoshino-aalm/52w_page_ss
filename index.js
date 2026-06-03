@@ -9,7 +9,8 @@ async function run() {
 
   console.log('ブラウザを起動しています...');
   const browser = await puppeteer.launch({
-    headless: 'new',
+    headless: 'true',
+    channel: 'chrome',
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox', 
