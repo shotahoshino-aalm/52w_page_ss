@@ -19,11 +19,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-      
-      - name: Clear cache and Install Puppeteer Browsers
-        run: |
-          rm -rf ~/.cache/puppeteer
-          npx puppeteer browsers install chrome
 
       - name: Run screenshot script
         env:
